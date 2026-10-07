@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vbo-mi"
+version = "0.2.0"
+description = "VBO-MI and the seven baseline surrogate methods used in its TMLR experiments"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.1",
+    "numpy>=1.26",
+    "pandas>=2.0",
+]
+
+[project.optional-dependencies]
+experiments = [
+    "matplotlib>=3.7",
+    "tqdm>=4.65",
+]
+dev = [
+    "pytest>=8.0",
+]
+lla = [
+    "laplace-torch>=0.2",
+]
+all = [
+    "matplotlib>=3.7",
+    "tqdm>=4.65",
+    "pytest>=8.0",
+    "laplace-torch>=0.2",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["vbo_mi*", "vbo_baselines*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
