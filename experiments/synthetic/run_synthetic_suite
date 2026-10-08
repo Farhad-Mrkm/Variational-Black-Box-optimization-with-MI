@@ -1,0 +1,119 @@
+"""Run VBO-MI on the synthetic benchmarks used in the TMLR paper.
+
+These scripts are experiment wrappers, not a second implementation of VBO-MI.
+The optimizer itself lives in ``src/vbo_mi``.
+
+Examples
+--------
+# Fast smoke run
+python experiments/synthetic/run_synthetic_suite.py --tasks ackley --seeds 0 --warmup 2 --iterations 5 --batch-size 16
+
+# Paper-shaped synthetic run
+python experiments/synthetic/run_synthetic_suite.py --tasks ackley levy griewank --seeds 0 1 2 3 4
+"""
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "src"))
+
+import numpy as np
+import pandas as pd
+
+from vbo_mi.config import VBOConfig
+from vbo_mi.objectives import paper_synthetic_objective
+from vbo_mi.runner import VBOMI, run_multiseed
+
+
+PAPER_DEFAULTS = {
+    "ackley": {"dimension": 10, "batch_size": 60, "warmup": 30, "iterations": 70},
+    "levy": {"dimension": 20, "batch_size": 60, "warmup": 30, "iterations": 70},
+    "griewank": {"dimension": 20, "batch_size": 60, "warmup": 30, "iterations": 70},
+    "hartmann6": {"dimension": 6, "batch_size": 60, "warmup": 30, "iterations": 70},
+    "rastrigin": {"dimension": 20, "batch_size": 60, "warmup": 30, "iterations": 70},
+}
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--tasks", nargs="+", default=["ackley"], choices=list(PAPER_DEFAULTS))
+    parser.add_argument("--seeds", nargs="+", type=int, default=[0, 1, 2, 3, 4])
+    parser.add_argument("--batch-size", type=int, default=None)
+    parser.add_argument("--warmup", type=int, default=None)
+    parser.add_argument("--iterations", type=int, default=None)
+    parser.add_argument("--output", type=Path, default=ROOT / "results" / "experiments" / "synthetic")
+    return parser.parse_args()
+
+
+def run_task(task: str, seeds: list[int], batch_size: int, warmup: int, iterations: int, outdir: Path) -> None:
+    objective = paper_synthetic_objective(task)
+    config = VBOConfig()
+
+    mean, std, runs = run_multiseed(
+        objective=objective,
+        config=config,
+        seeds=seeds,
+        batch_size=batch_size,
+        main_iterations=iterations,
+        warmup_iterations=warmup,
+    )
+
+    rows = []
+    for i in range(iterations):
+        rows.append({
+            "task": task,
+            "iteration": i + 1,
+            "function_evaluations": int(runs[0].evaluation_counts[i]),
+            "best_mean": float(mean[i]),
+            "best_std": float(std[i]),
+        })
+    for seed, run in zip(seeds, runs):
+        for i, (count, value) in enumerate(zip(run.evaluation_counts, run.best_values), start=1):
+            rows.append({
+                "task": task,
+                "seed": seed,
+                "iteration": i,
+                "function_evaluations": int(count),
+                "best_value": float(value),
+                "best_mean": np.nan,
+                "best_std": np.nan,
+            })
+
+    outdir.mkdir(parents=True, exist_ok=True)
+    df = pd.DataFrame(rows)
+    path = outdir / f"{task}.csv"
+    df.to_csv(path, index=False)
+
+    summary = pd.DataFrame({
+        "task": [task],
+        "seeds": [len(seeds)],
+        "batch_size": [batch_size],
+        "warmup_iterations": [warmup],
+        "main_iterations": [iterations],
+        "total_evaluations_per_seed": [int(runs[0].evaluation_counts[-1])],
+        "final_best_mean": [float(mean[-1])],
+        "final_best_std": [float(std[-1])],
+    })
+    summary.to_csv(outdir / f"{task}_summary.csv", index=False)
+    print(f"[{task}] final mean ± std = {mean[-1]:.6g} ± {std[-1]:.6g}; saved to {path}")
+
+
+def main() -> None:
+    args = parse_args()
+    for task in args.tasks:
+        defaults = PAPER_DEFAULTS[task]
+        run_task(
+            task=task,
+            seeds=args.seeds,
+            batch_size=args.batch_size or defaults["batch_size"],
+            warmup=args.warmup if args.warmup is not None else defaults["warmup"],
+            iterations=args.iterations if args.iterations is not None else defaults["iterations"],
+            outdir=args.output,
+        )
+
+
+if __name__ == "__main__":
+    main()
