@@ -1,7 +1,5 @@
-# VBO-MI settings derived from Appendix C.1.1 and Table 2 of the supplied TMLR manuscript.
-# beta does not have one explicit default value in the manuscript; 100 is supplied
-# here as a repository default and should be replaced with the exact experiment
-# setting if the original experiment configuration is recovered.
+# VBO-MI settings derived from Appendix C.1.1 and Table 2 of the TMLR manuscript.
+
 seed_dim: 16
 action_hidden_dim: 128
 helper_hidden_dim: 64
