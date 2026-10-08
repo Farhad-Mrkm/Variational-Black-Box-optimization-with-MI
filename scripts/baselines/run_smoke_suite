@@ -1,0 +1,65 @@
+
+
+import argparse
+import sys
+from pathlib import Path
+
+import torch
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+from vbo_baselines.bo.loop import BOConfig, run_suite
+from vbo_baselines.factory import make_baseline
+from vbo_baselines.objectives import ackley, branin_normalized
+
+
+def build_factories():
+    return {
+        "GP": lambda d, s: make_baseline("GP", d, s, fit_steps=10, learning_rate=0.03),
+        "DKL": lambda d, s: make_baseline("DKL", d, s, hidden_width=16, feature_dim=8, fit_steps=10),
+        "IBNN": lambda d, s: make_baseline("IBNN", d, s, fit_steps=10),
+        "Sparse": lambda d, s: make_baseline("Sparse", d, s, num_inducing=10, fit_steps=10),
+        "HMC": lambda d, s: make_baseline(
+            "HMC", d, s, hidden_width=16, samples=3, warmup_steps=3,
+            leapfrog_steps=2, map_steps=5, step_size=1e-4
+        ),
+        "SGHMC": lambda d, s: make_baseline(
+            "SGHMC", d, s, hidden_width=16, samples=3, burnin_steps=3,
+            total_steps=6, batch_size=8, map_steps=5, step_size=1e-4
+        ),
+        # LLA is deliberately not included in this smoke runner because it
+        # requires the external laplace-torch package.
+    }
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--task", choices=["branin", "ackley"], default="branin")
+    args = parser.parse_args()
+
+    if args.task == "branin":
+        objective = branin_normalized
+        dim = 2
+        bounds = torch.tensor([[0.0, 0.0], [1.0, 1.0]])
+    else:
+        objective = lambda X: ackley(X * 65.536 - 32.768)
+        dim = 2
+        bounds = torch.tensor([[-32.768, -32.768], [32.768, 32.768]])
+
+    cfg = BOConfig(
+        n_init=6,
+        total_evals=10,
+        q=1,
+        qei_restarts=2,
+        qei_steps=3,
+        qei_mc_samples=8,
+        seed=0,
+    )
+    result = run_suite(build_factories(), objective, bounds, dim, cfg)
+    print(result.groupby("method")["best_so_far"].max())
+    result.to_csv("smoke_results.csv", index=False)
+
+
+if __name__ == "__main__":
+    main()
