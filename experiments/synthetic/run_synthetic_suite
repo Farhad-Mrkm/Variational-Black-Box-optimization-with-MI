@@ -1,7 +1,5 @@
 """Run VBO-MI on the synthetic benchmarks used in the TMLR paper.
 
-These scripts are experiment wrappers, not a second implementation of VBO-MI.
-The optimizer itself lives in ``src/vbo_mi``.
 
 Examples
 --------
