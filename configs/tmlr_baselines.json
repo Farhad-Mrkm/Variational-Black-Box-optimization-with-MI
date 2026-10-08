@@ -56,5 +56,5 @@
       "focalized_objective": "Focalized variational weighting"
     }
   },
-  "note": "The TMLR appendix explicitly delegates several optimization/sampler details to Li et al. (2024) and the Focal Sparse GP configuration to Wei et al. (2024). Those details are kept configurable rather than silently invented."
+ 
 }
