@@ -1,0 +1,43 @@
+#!/usr/bin/env python3
+from pathlib import Path
+import argparse
+
+import matplotlib.pyplot as plt
+
+from vbo_mi import VBOConfig, VBOMI
+from vbo_mi.objectives import paper_synthetic_objective
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--batch-size", type=int, default=60)
+    parser.add_argument("--warmup", type=int, default=30)
+    parser.add_argument("--iterations", type=int, default=70)
+    parser.add_argument("--out", type=Path, default=Path("results/ackley"))
+    args = parser.parse_args()
+
+    objective = paper_synthetic_objective("ackley")
+    cfg = VBOConfig(seed=args.seed)
+    optimizer = VBOMI(objective, cfg)
+    result = optimizer.run(
+        batch_size=args.batch_size,
+        warmup_iterations=args.warmup,
+        main_iterations=args.iterations,
+    )
+
+    args.out.mkdir(parents=True, exist_ok=True)
+    result.to_csv(args.out / f"seed_{args.seed}.csv")
+    plt.figure(figsize=(8, 5))
+    plt.plot(result.evaluation_counts, result.best_values)
+    plt.xlabel("Function evaluations")
+    plt.ylabel("Best value so far")
+    plt.title("VBO-MI on Ackley")
+    plt.tight_layout()
+    plt.savefig(args.out / f"seed_{args.seed}.png", dpi=160)
+    print(f"Final best value: {result.best_y:.6f}")
+    print(f"Results saved: {args.out / f'seed_{args.seed}.csv'}")
+
+
+if __name__ == "__main__":
+    main()
