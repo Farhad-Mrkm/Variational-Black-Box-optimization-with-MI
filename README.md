@@ -137,15 +137,6 @@ This is a diagnostic experiment, not one of the main TMLR benchmark runs.
 pytest -q
 ```
 
-## Legacy code
-
-The original supplied development files are preserved under `legacy/`:
-
-- `legacy/mycodework_original.py`
-- `legacy/untitled50_baselines.py`
-
-They are kept for provenance and comparison; the modular packages under `src/` are the preferred entry points.
-
 ## References
 
 - VBO-MI: *A Differentiable Black-Box Optimization Framework via Variational Mutual Information Estimation*.
