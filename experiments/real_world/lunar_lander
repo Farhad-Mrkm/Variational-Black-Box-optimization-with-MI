@@ -1,14 +1,8 @@
 """Lunar Lander experiment adapter.
 
 The TMLR manuscript evaluates a 12-dimensional controller objective using
-LunarLander-v2. Current Gymnasium releases register the environment as
-``LunarLander-v3``. This adapter therefore uses v3 by default and keeps the
-environment-specific code isolated from the VBO-MI implementation.
+LunarLander-v2. 
 
-IMPORTANT: the manuscript does not provide enough information to reconstruct
-its exact 12-parameter controller mapping from the paper text alone. The
-controller below is consequently a lightweight, paper-inspired 12-parameter
-parameterization intended for experimentation, not an exact reproduction.
 """
 from __future__ import annotations
 
