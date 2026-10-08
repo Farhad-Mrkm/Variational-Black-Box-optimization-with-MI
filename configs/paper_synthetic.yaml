@@ -1,0 +1,22 @@
+# VBO-MI settings derived from Appendix C.1.1 and Table 2 of the supplied TMLR manuscript.
+# beta does not have one explicit default value in the manuscript; 100 is supplied
+# here as a repository default and should be replaced with the exact experiment
+# setting if the original experiment configuration is recovered.
+seed_dim: 16
+action_hidden_dim: 128
+helper_hidden_dim: 64
+surrogate_hidden_dim: 128
+action_lr: 0.002
+helper_lr: 0.002
+surrogate_lr: 0.001
+ka: 5
+kb: 10
+ks: 10
+surrogate_pretrain_steps: 200
+beta: 100.0
+max_buffer_batches: 100
+
+# Task defaults
+batch_size: 60
+warmup_iterations: 30
+main_iterations: 70
