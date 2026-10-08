@@ -1,0 +1,271 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, asdict
+import csv
+from pathlib import Path
+from typing import Callable, Optional
+
+import numpy as np
+import torch
+
+from .config import VBOConfig
+from .mi import action_loss, helper_loss
+from .models import ActionNet, HelperCritic, SurrogateNet
+from .objectives import BlackBoxObjective
+from .replay import ReplayBuffer
+from .utils import finite_tensor, frozen, set_seed
+
+
+@dataclass
+class RunResult:
+    best_values: np.ndarray
+    best_x: np.ndarray
+    best_y: float
+    evaluation_counts: np.ndarray
+    wall_time_seconds: float
+    seed: int
+
+    def to_csv(self, path: str | Path) -> None:
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(["iteration", "function_evaluations", "best_value"])
+            for i, (n, value) in enumerate(zip(self.evaluation_counts, self.best_values), start=1):
+                writer.writerow([i, int(n), float(value)])
+
+
+class VBOMI:
+    """Surrogate-assisted VBO-MI implementation following Algorithm 1."""
+
+    def __init__(self, objective: BlackBoxObjective, config: Optional[VBOConfig] = None):
+        self.objective = objective
+        self.config = config or VBOConfig()
+        self.config.validate()
+
+        self.device = torch.device(
+            self.config.device or ("cuda" if torch.cuda.is_available() else "cpu")
+        )
+        self.dtype = self.config.dtype
+        self.lower = objective.lower.to(device=self.device, dtype=self.dtype)
+        self.upper = objective.upper.to(device=self.device, dtype=self.dtype)
+        self.objective.lower = self.lower
+        self.objective.upper = self.upper
+        self._reset_models()
+
+    def _reset_models(self) -> None:
+        set_seed(self.config.seed)
+        self.action_net = ActionNet(
+            self.config.seed_dim,
+            self.objective.input_dim,
+            self.lower,
+            self.upper,
+            hidden_dim=self.config.action_hidden_dim,
+        ).to(device=self.device, dtype=self.dtype)
+        self.helper = HelperCritic(
+            self.objective.input_dim,
+            hidden_dim=self.config.helper_hidden_dim,
+        ).to(device=self.device, dtype=self.dtype)
+        self.surrogate = SurrogateNet(
+            self.objective.input_dim,
+            hidden_dim=self.config.surrogate_hidden_dim,
+            hidden_layers=self.config.surrogate_hidden_layers,
+        ).to(device=self.device, dtype=self.dtype)
+
+        self.opt_action = torch.optim.Adam(self.action_net.parameters(), lr=self.config.action_lr)
+        self.opt_helper = torch.optim.Adam(self.helper.parameters(), lr=self.config.helper_lr)
+        self.opt_surr = torch.optim.Adam(self.surrogate.parameters(), lr=self.config.surrogate_lr)
+        self.buffer = ReplayBuffer(self.config.max_buffer_batches)
+
+    def _seeds(self, batch_size: int) -> torch.Tensor:
+        return torch.randn(batch_size, self.config.seed_dim, device=self.device, dtype=self.dtype)
+
+    def _surrogate_batch(self) -> tuple[torch.Tensor, torch.Tensor]:
+        return self.buffer.sample(
+            batch_size=self.objective_batch_size,
+            device=self.device,
+            dtype=self.dtype,
+        )
+
+    @property
+    def objective_batch_size(self) -> int:
+        # Fall back to the manuscript synthetic default when not set by caller.
+        return int(self.objective.batch_size or 60)
+
+    def _oracle(self, actions: torch.Tensor) -> torch.Tensor:
+        return self.objective(actions.detach())
+
+    def _helper_step(self, seeds: torch.Tensor) -> float:
+        with torch.no_grad():
+            actions = self.action_net(seeds)
+            y_hat = self.surrogate(actions)
+        scores = self.helper(actions, y_hat)
+        loss = helper_loss(scores)
+        finite_tensor(loss, "helper loss")
+        self.opt_helper.zero_grad(set_to_none=True)
+        loss.backward()
+        self.opt_helper.step()
+        return float(loss.detach().cpu())
+
+    def _surrogate_step(self) -> float:
+        x, y = self.buffer.sample(
+            batch_size=min(self.objective_batch_size, len(self.buffer)),
+            device=self.device,
+            dtype=self.dtype,
+        )
+        pred = self.surrogate(x)
+        target = y
+        if self.config.normalize_surrogate_targets:
+            mean = target.mean()
+            std = target.std().clamp_min(1e-8)
+            target = (target - mean) / std
+        loss = torch.mean((pred - target) ** 2)
+        finite_tensor(loss, "surrogate loss")
+        self.opt_surr.zero_grad(set_to_none=True)
+        loss.backward()
+        self.opt_surr.step()
+        return float(loss.detach().cpu())
+
+    def _action_step(self, seeds: torch.Tensor) -> float:
+        with frozen(self.helper), frozen(self.surrogate):
+            actions = self.action_net(seeds)
+            y_hat = self.surrogate(actions)
+            scores = self.helper(actions, y_hat)
+            loss = action_loss(scores, y_hat.mean(), self.config.beta)
+            finite_tensor(loss, "action loss")
+            self.opt_action.zero_grad(set_to_none=True)
+            loss.backward()
+            self.opt_action.step()
+        return float(loss.detach().cpu())
+
+    def _initialise_from_warmup(self, batch_size: int) -> tuple[torch.Tensor, torch.Tensor]:
+        last_actions: Optional[torch.Tensor] = None
+        last_y: Optional[torch.Tensor] = None
+        for _ in range(self.config.warmup_iterations):
+            seeds = self._seeds(batch_size)
+            with torch.no_grad():
+                actions = self.action_net(seeds)
+            y = self._oracle(actions)
+            self.buffer.add(actions, y)
+            with torch.no_grad():
+                y_hat = y
+            scores = self.helper(actions, y_hat)
+            loss = helper_loss(scores)
+            finite_tensor(loss, "warm-up helper loss")
+            self.opt_helper.zero_grad(set_to_none=True)
+            loss.backward()
+            self.opt_helper.step()
+            last_actions, last_y = actions, y
+        return last_actions, last_y
+
+    def _pretrain_surrogate(self, batch_size: int) -> None:
+        for _ in range(self.config.surrogate_pretrain_steps):
+            self._surrogate_step()
+
+    def run(self, batch_size: Optional[int] = None, main_iterations: Optional[int] = None, warmup_iterations: Optional[int] = None) -> RunResult:
+        import time
+
+        batch_size = int(batch_size if batch_size is not None else self.objective_batch_size)
+        main_iterations = int(main_iterations if main_iterations is not None else (self.objective.main_iterations or 70))
+        warmup_iterations = int(warmup_iterations if warmup_iterations is not None else (self.objective.warmup_iterations or 30))
+        if batch_size < 2:
+            raise ValueError("batch_size must be >= 2")
+
+        # Keep runtime counters independent of the model's internal tensors.
+        self._reset_models()
+        self.objective.batch_size = batch_size
+        set_seed(self.config.seed)
+        start = time.perf_counter()
+
+        best_value = -float("inf")
+        best_x = None
+        best_values: list[float] = []
+        eval_counts: list[int] = []
+        evaluations = 0
+
+        # Warm-up: real oracle evaluations + helper updates. Action net is fixed.
+        for _ in range(warmup_iterations):
+            seeds = self._seeds(batch_size)
+            with torch.no_grad():
+                actions = self.action_net(seeds)
+            y = self._oracle(actions)
+            evaluations += batch_size
+            self.buffer.add(actions, y)
+
+            scores = self.helper(actions.detach(), y.detach())
+            loss = helper_loss(scores)
+            self.opt_helper.zero_grad(set_to_none=True)
+            loss.backward()
+            self.opt_helper.step()
+
+            batch_best, batch_idx = torch.max(y[:, 0], dim=0)
+            if float(batch_best) > best_value:
+                best_value = float(batch_best)
+                best_x = actions[batch_idx].detach().cpu().numpy()
+
+        if len(self.buffer) == 0:
+            raise RuntimeError("Warm-up must collect at least one observation")
+
+        # Surrogate pre-training on the warm-up replay data.
+        for _ in range(self.config.surrogate_pretrain_steps):
+            self._surrogate_step()
+
+        # Main VBO-MI phase.
+        for _ in range(main_iterations):
+            seeds = self._seeds(batch_size)
+
+            for _ in range(self.config.ka):
+                self._helper_step(seeds)
+
+            for _ in range(self.config.ks):
+                self._surrogate_step()
+
+            for _ in range(self.config.kb):
+                self._action_step(seeds)
+
+            # Exactly one real oracle batch per main iteration, as in Algorithm 1.
+            with torch.no_grad():
+                actions = self.action_net(seeds)
+            y = self._oracle(actions)
+            evaluations += batch_size
+            self.buffer.add(actions, y)
+
+            batch_best, batch_idx = torch.max(y[:, 0], dim=0)
+            if float(batch_best) > best_value:
+                best_value = float(batch_best)
+                best_x = actions[batch_idx].detach().cpu().numpy()
+            best_values.append(best_value)
+            eval_counts.append(evaluations)
+
+        if best_x is None:
+            raise RuntimeError("No observed objective value")
+
+        return RunResult(
+            best_values=np.asarray(best_values, dtype=np.float64),
+            best_x=best_x,
+            best_y=float(best_value),
+            evaluation_counts=np.asarray(eval_counts, dtype=np.int64),
+            wall_time_seconds=time.perf_counter() - start,
+            seed=self.config.seed,
+        )
+
+
+def run_multiseed(
+    objective: BlackBoxObjective,
+    config: VBOConfig,
+    seeds: list[int],
+    batch_size: int,
+    main_iterations: int,
+    warmup_iterations: int,
+) -> tuple[np.ndarray, np.ndarray, list[RunResult]]:
+    runs: list[RunResult] = []
+    for seed in seeds:
+        cfg = VBOConfig(**{**asdict(config), "seed": seed})
+        optimizer = VBOMI(objective, cfg)
+        runs.append(optimizer.run(
+            batch_size=batch_size,
+            main_iterations=main_iterations,
+            warmup_iterations=warmup_iterations,
+        ))
+    matrix = np.stack([r.best_values for r in runs], axis=0)
+    return matrix.mean(axis=0), matrix.std(axis=0), runs
