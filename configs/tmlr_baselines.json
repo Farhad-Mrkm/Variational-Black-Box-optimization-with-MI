@@ -1,0 +1,60 @@
+{
+  "paper_source": "TMLR Appendix C.1.2, Table 1",
+  "acquisition": "Monte-Carlo Expected Improvement (qEI)",
+  "initial_design": "Sobol",
+  "initial_points": {
+    "synthetic": 10,
+    "lunar_lander": 50,
+    "rover_trajectory": 50,
+    "pest_control": 20
+  },
+  "methods": {
+    "GP": {
+      "kernel": "Matern-5/2",
+      "lengthscale_prior": "Gamma(3,6)",
+      "outputscale_prior": "Gamma(2.0,0.15)"
+    },
+    "DKL": {
+      "feature_extractor": "3-layer MLP",
+      "activation": "Tanh",
+      "width": 128,
+      "base_kernel": "Matern-5/2"
+    },
+    "IBNN": {
+      "kernel": "NNGP",
+      "depth": 3,
+      "activation": "ReLU",
+      "weight_variance": 10.0,
+      "bias_variance": 1.6
+    },
+    "HMC": {
+      "architecture": "3-layer MLP",
+      "activation": "Tanh",
+      "width": 128,
+      "posterior_samples_from_flop_table": 50,
+      "leapfrog_steps_from_flop_table": 20
+    },
+    "SGHMC": {
+      "architecture": "3-layer MLP",
+      "activation": "Tanh",
+      "width": 128,
+      "step_size": "adaptive",
+      "likelihood_variance": "heteroskedastic network output"
+    },
+    "LLA": {
+      "architecture": "3-layer MLP",
+      "activation": "Tanh",
+      "width": 128,
+      "implementation_family": "laplace-torch, full weights, Kronecker Hessian"
+    },
+    "Sparse": {
+      "kernel": "Matern-5/2",
+      "inducing_variables": {
+        "synthetic": 50,
+        "real_world": 200
+      },
+      "focalized_objective": "Focalized variational weighting"
+    }
+  },
+  "note": "The TMLR appendix explicitly delegates several optimization/sampler details to Li et al. (2024) and the Focal Sparse GP configuration to Wei et al. (2024). Those details are kept configurable rather than silently invented."
+}
