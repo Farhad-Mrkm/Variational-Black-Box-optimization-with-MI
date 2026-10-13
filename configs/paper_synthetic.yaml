@@ -1,4 +1,4 @@
-# VBO-MI settings derived from Appendix C.1.1 and Table 2 of the TMLR manuscript.
+# VBO-MI settings from the manuscript.
 
 seed_dim: 16
 action_hidden_dim: 128
