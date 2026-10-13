@@ -1,5 +1,5 @@
 {
-  "paper_source": "TMLR Appendix C.1.2, Table 1",
+  
   "acquisition": "Monte-Carlo Expected Improvement (qEI)",
   "initial_design": "Sobol",
   "initial_points": {
