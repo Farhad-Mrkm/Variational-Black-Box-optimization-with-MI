@@ -1,8 +1,7 @@
 """Categorical Pest Control proxy benchmark.
 
 The TMLR task is a 25-dimensional categorical optimization problem with five
-choices per stage. The paper specifies one-hot handling and a categorical
-projection for VBO-MI
+choices per stage.
 """
 from __future__ import annotations
 
