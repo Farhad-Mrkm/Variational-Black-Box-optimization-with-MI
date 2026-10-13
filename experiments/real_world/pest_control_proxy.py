@@ -2,10 +2,7 @@
 
 The TMLR task is a 25-dimensional categorical optimization problem with five
 choices per stage. The paper specifies one-hot handling and a categorical
-projection for VBO-MI, but does not include the full simulator in the
-manuscript. This file provides a small stochastic control proxy with the same
-25 x 5 search-space shape. It is useful for testing categorical wrappers and
-is explicitly *not* presented as the original benchmark simulator.
+projection for VBO-MI
 """
 from __future__ import annotations
 
