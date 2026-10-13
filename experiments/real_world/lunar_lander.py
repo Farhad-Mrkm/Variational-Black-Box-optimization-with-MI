@@ -1,7 +1,5 @@
 """Lunar Lander experiment adapter.
 
-The TMLR manuscript evaluates a 12-dimensional controller objective using
-LunarLander-v2. 
 
 """
 from __future__ import annotations
