@@ -1,9 +1,7 @@
 """60-D Rover Trajectory Planning proxy.
 
 The manuscript describes a 60-dimensional task consisting of 30 two-dimensional
-waypoints. This adapter reproduces that search-space structure and the main
-optimization ingredients (path length, obstacle collisions, and deviation)
-without claiming to reproduce the original simulator exactly.
+waypoints.
 """
 from __future__ import annotations
 
