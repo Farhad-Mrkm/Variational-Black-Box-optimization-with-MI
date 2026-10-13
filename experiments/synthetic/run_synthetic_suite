@@ -6,8 +6,6 @@ Examples
 # Fast smoke run
 python experiments/synthetic/run_synthetic_suite.py --tasks ackley --seeds 0 --warmup 2 --iterations 5 --batch-size 16
 
-# Paper-shaped synthetic run
-python experiments/synthetic/run_synthetic_suite.py --tasks ackley levy griewank --seeds 0 1 2 3 4
 """
 from __future__ import annotations
 
