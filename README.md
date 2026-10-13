@@ -66,7 +66,7 @@ VBO-MI uses three neural components:
 2. **Helper** $D_\\theta$: a pairwise LSTM + MLP critic used to estimate the Donsker--Varadhan variational mutual-information bound.
 3. **Surrogate** $\\hat f_\\psi$: a small MLP trained on the replay buffer and used to provide the exploitation signal without querying the black-box objective inside the internal update loops.
 
-The main implementation follows the algorithm in the paper: warm-up oracle evaluations, surrogate pre-training, helper updates, surrogate updates, action-net updates with helper/surrogate parameters frozen, and then one real oracle evaluation batch per main iteration.
+The main implementation follows the algorithm including the warm-up oracle evaluations, surrogate pre-training, helper updates, surrogate updates, action-net updates with helper/surrogate parameters frozen, and then one real oracle evaluation batch per main iteration.
 
 
 ### Run a small VBO-MI example
@@ -92,7 +92,7 @@ The manuscript frames Ackley, Levy and Griewank as maximization problems by opti
 
 The baseline package is `vbo_baselines`. All seven methods share the same common BO interface and common qEI acquisition optimizer.
 
-The baseline protocol encoded from the supplied TMLR Appendix C.1.2 is:
+The baseline protocol is as follows:
 
 - Monte-Carlo Expected Improvement (qEI)
 - Sobol initial designs
@@ -107,7 +107,6 @@ The baseline protocol encoded from the supplied TMLR Appendix C.1.2 is:
 - LLA: 3-layer Tanh MLP, width 128
 - Focal Sparse GP: Matérn-5/2 with 50 inducing variables for synthetic tasks and 200 for real-world tasks
 
-The manuscript states that HMC, SGHMC, LLA, DKL and I-BNN follow Li et al. (2024), while Focal Sparse GP follows Wei et al. (2024). Details that are not explicit in the supplied manuscript remain configurable instead of being silently invented.
 
 ### Run the baseline smoke test
 
@@ -121,15 +120,6 @@ python scripts/baselines/smoke_test.py
 python scripts/baselines/run_smoke_suite.py --task branin
 ```
 
-## MI diagnostic experiment
-
-The repository includes a small Gaussian-channel MI validation script:
-
-```bash
-python scripts/vbo_mi/run_ar_lstm_validation.py
-```
-
-This is a diagnostic experiment, not one of the main TMLR benchmark runs.
 
 ## Tests
 
